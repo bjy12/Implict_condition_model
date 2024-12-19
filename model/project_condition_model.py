@@ -1,0 +1,159 @@
+from typing import Optional, Union
+
+import torch
+from diffusers.schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler
+from diffusers.schedulers.scheduling_lms_discrete import LMSDiscreteScheduler
+from diffusers import ModelMixin
+
+from torch import Tensor
+from einops import rearrange
+
+from utils_file.model_utils import index_2d
+from model.modules.image_encoder.u_net import UNet
+from model.modules.points_wise.points_encoder import PointsWiseFeatureEncoder
+from model.modules.points_wise.position_embedding import get_embedder , GlobalFeatureFilter
+import pdb 
+
+SchedulerClass = Union[DDPMScheduler, DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
+
+
+class ProjectionImplictConditionModel(ModelMixin):
+    def __init__(
+        self,
+        image_encoder: dict = {},
+        use_local_features: bool = True,
+        use_global_features: bool = False,
+        encoder_type: str = 'view_mixer' ,
+        num_views: int = 2 ,
+        gl_f_input_c: int = 321, 
+        gl_f_output_c: int = 128,
+        merge_mode: str = 'concat'
+    ):
+        super().__init__()
+
+        self.image_encoder = UNet(**image_encoder)
+        self.use_local_conditioning = use_local_features
+        self.use_global_conditioning = use_global_features
+        self.num_views = num_views
+        self.gl_f_input_c = gl_f_input_c
+        self.gl_f_output_c = gl_f_output_c
+
+        self.points_wise_encoder = PointsWiseFeatureEncoder(encoder_type , num_views)
+        self.position_embedder , _  = get_embedder(10 , 0 )
+        self.gloabl_feature_encoder = GlobalFeatureFilter(gl_f_input_c , gl_f_output_c)
+        self.merge_mode = merge_mode
+
+
+    def image_wise_encoder(self, projs):
+        b , m , c , w , h  = projs.shape
+        projs = projs.reshape(b*m, c , w , h)
+        proj_feats = self.image_encoder(projs)
+        #pdb.set_trace()
+        proj_feats = list(proj_feats) if type(proj_feats) is tuple else [proj_feats]
+        for i in range(len(proj_feats)):
+            _, c_, w_, h_ = proj_feats[i].shape
+            proj_feats[i] = proj_feats[i].reshape(b, m, c_, w_, h_) # B, M, C, W, H
+            #check_feature_range(proj_feats[i] , f"proj_feats_scale_{i}")
+        #pdb.set_trace()
+
+        return proj_feats
+    
+    def get_local_conditioning(self,proj_xray: Tensor , points_proj:Tensor):
+        #! keep points order 
+        #b , c , h  , w  ,d = points_proj.shape
+        #points_proj = rearrange(points_proj, 'b c h w d -> b c (h w d)') 
+        #pdb.set_trace()
+        b , m , c , w , h = proj_xray.shape
+        proj_xray = proj_xray.reshape(b*m , c, w, h)
+        xray_feats , global_features = self.image_encoder(proj_xray)  # # global feature  b*m , c , 1, 1
+        global_features = global_features.reshape(b,m,-1,1,1)
+        xray_feats  = list(xray_feats) if type(xray_feats) is tuple else [xray_feats]
+        for i in range(len(xray_feats)):
+            _, c_, w_, h_ = xray_feats[i].shape
+            xray_feats[i] = xray_feats[i].reshape(b, m, c_, w_, h_) # B, M, C, W, H
+        #pdb.set_trace()
+        points_feats = self.project_points(xray_feats , points_proj)
+
+        # points_wise_feature_process
+        points_feats = self.points_wise_encoder(points_feats)
+        #pdb.set_trace()
+        local_feats = points_feats
+
+
+        return local_feats , global_features
+
+
+
+
+    def project_points(self, proj_feats ,points_proj):
+        n_view = proj_feats[0].shape[1]
+        # query view_specific features 
+        p_list = []
+        p_list = []
+        for i in range(n_view):
+            f_list = []
+            for proj_f in proj_feats:
+                feat = proj_f[:, i, ...] # B, C, W, H
+                p = points_proj[:, i, ...] # B, N, 2
+                p_feats = index_2d(feat, p) # B, C, N
+                f_list.append(p_feats)
+            p_feats = torch.cat(f_list, dim=1)
+            p_list.append(p_feats)
+        p_feats = torch.stack(p_list, dim=-1) # B, C, N, M
+        return p_feats
+
+
+    def get_input_with_conditioning(
+        self,
+        x_t: Tensor,                    # b, 1 , h , w, d
+        projs_xray: Optional[Tensor],    # b, 2 , u , v
+        points_proj: Optional[Tensor],  # b, 2 , h , w , d 
+        coords: Optional[Tensor],       # b, 3 , h , w , d
+    ):
+        # 
+        #B , C , H , W , D = x_t.shape
+        #pdb.set_trace()
+        x_t_input = [x_t]
+        x_t_input.append(coords.clone())
+        B , H , W , D , _  = coords.shape
+        condtion_list = []
+
+        if self.use_local_conditioning:
+            local_features , global_features = self.get_local_conditioning(projs_xray, points_proj)
+            #pdb.set_trace()
+            local_features = rearrange(local_features , 'b c (h w d) -> b h w d c', h=H, w=W, d=D) 
+            condtion_list.append(local_features)
+
+            #pdb.set_trace()
+        if self.use_global_conditioning:
+            global_features = global_features.squeeze(-1).squeeze(-1) # b 2 c 
+            global_features = rearrange(global_features , "b n_v c -> b (n_v c) 1 1 1 ").expand(-1,-1,H,W,D)
+            global_features = global_features.permute(0,2,3,4,1) # 64 64 64 258
+            coords = coords.reshape(B,-1,3)
+            embedded = self.position_embedder(coords)
+            embedded = embedded.reshape(B, H, W, D, -1)  # 64 64 64  63
+            #pdb.set_trace()
+            outputs_global = self.gloabl_feature_encoder(torch.cat([embedded , global_features] , dim=-1))  # input channels ( 63+258 =  )  output channnels   (128)
+            
+            #pdb.set_trace()
+
+        if self.merge_mode == 'concat': 
+            condition_features = torch.cat([outputs_global['outputs'] , local_features] , dim=-1)
+        #pdb.set_trace()
+        x_t_input.append(condition_features)  # p_embedding  global feature  local feature 
+        
+        x_t_input  = torch.cat(x_t_input , dim=-1)  # (B, h , w ,d , noised_i+pos+lcoal_d+global_d )
+
+        x_t_input = rearrange(x_t_input , ' b h w d c -> b c h w d ')
+
+        #pdb.set_trace()
+          
+        return x_t_input
+    
+    def forward(self, batch: dict, mode: str = 'train', **kwargs):
+        """ The forward method may be defined differently for different models. """
+        raise NotImplementedError()
+
+        
+
+        
