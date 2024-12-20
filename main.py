@@ -21,6 +21,7 @@ from utils_file import training_utils
 from config.train_cfg_pcc import ProjectConfig
 from model import get_model, Points_WiseImplict_ConditionDiffusionModel
 from dataset import get_dataset
+from sample_process import sample
 try:
     import lovely_tensors
     lovely_tensors.monkey_patch()
@@ -89,7 +90,7 @@ def main(cfg: ProjectConfig):
     # Resume from checkpoint and create the initial training state
     #* Sample process by resume checkpoints setting 
     train_state: training_utils.TrainState = training_utils.resume_from_checkpoint(cfg, model, optimizer, scheduler, model_ema)
-
+    pdb.set_trace()
     #Dataset
     #pdb.set_trace()
     dataloader_train , dataloader_test = get_dataset(cfg)
@@ -98,8 +99,8 @@ def main(cfg: ProjectConfig):
     total_batch_size = cfg.dataloader.batch_size * accelerator.num_processes * accelerator.gradient_accumulation_steps
     # Setup.
     #! to do add val dataset 
-    model, optimizer, scheduler, dataloader_train = accelerator.prepare(
-        model, optimizer, scheduler, dataloader_train)
+    model, optimizer, scheduler, dataloader_train , dataloader_test = accelerator.prepare(
+        model, optimizer, scheduler, dataloader_train , dataloader_test)
 
     #pdb.set_trace()
     if accelerator.is_main_process:
@@ -181,7 +182,7 @@ def main(cfg: ProjectConfig):
                 if not math.isfinite(loss_value):
                     print("Loss is {}, stopping training".format(loss_value))
                     sys.exit(1)
-
+            #pdb.set_trace()
             # Gradient accumulation
             if accelerator.sync_gradients:
 
@@ -202,8 +203,26 @@ def main(cfg: ProjectConfig):
                 if cfg.ema.use_ema and train_state.step % cfg.ema.update_every == 0:
                     model_ema.update(model.parameters())
                 
-                # Save a checkpoint
-                if accelerator.is_main_process and (train_state.step % cfg.run.checkpoint_freq == 0):
+                if accelerator.is_main_process and (train_state.step % cfg.run.check_save_freq == 0):
+                    checkpoint_dict = {
+                        'model': accelerator.unwrap_model(model).state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'scheduler': scheduler.state_dict(),
+                        'epoch': train_state.epoch,
+                        'step': train_state.step,
+                        'best_val': train_state.best_val,
+                        'model_ema': model_ema.state_dict() if model_ema else {},
+                        'cfg': cfg
+                    }
+                    checkpoint_path = f'checkpoint-step-{train_state.step}'
+                    save_file_path = os.path.join(os.getcwd() , checkpoint_path)
+                    os.makedirs(save_file_path , exist_ok=True)
+                    check_points_save_path = os.path.join(save_file_path ,'checkpoint.pth')
+                    pdb.set_trace()
+                    accelerator.save(checkpoint_dict, check_points_save_path)
+                    print(f'Saved checkpoint to {Path(checkpoint_path).resolve()}')
+                # Save a last checkpoint
+                if accelerator.is_main_process and (train_state.step % cfg.run.checkpoint_last_freq == 0):
                     checkpoint_dict = {
                         'model': accelerator.unwrap_model(model).state_dict(),
                         'optimizer': optimizer.state_dict(),
