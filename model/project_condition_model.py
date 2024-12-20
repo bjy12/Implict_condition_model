@@ -64,13 +64,24 @@ class ProjectionImplictConditionModel(ModelMixin):
         #points_proj = rearrange(points_proj, 'b c h w d -> b c (h w d)') 
         #pdb.set_trace()
         b , m , c , w , h = proj_xray.shape
-        proj_xray = proj_xray.reshape(b*m , c, w, h)
+        #pdb.set_trace()
+        #proj_xray = proj_xray.reshape(b*m , c, w, h)
+        proj_xray = rearrange(proj_xray , "b m c w h -> (b m) c w h")
         xray_feats , global_features = self.image_encoder(proj_xray)  # # global feature  b*m , c , 1, 1
-        global_features = global_features.reshape(b,m,-1,1,1)
+        #pdb.set_trace()
+        c_out = global_features.shape[1]
+
+        global_features = rearrange(global_features , '(b m) c h w -> b m c h w' , b = b , m = m)
+        #pdb.set_trace()
+
+        #global_features = global_features.reshape(b,m,c_out,1,1)
+        #pdb.set_trace()
         xray_feats  = list(xray_feats) if type(xray_feats) is tuple else [xray_feats]
         for i in range(len(xray_feats)):
-            _, c_, w_, h_ = xray_feats[i].shape
-            xray_feats[i] = xray_feats[i].reshape(b, m, c_, w_, h_) # B, M, C, W, H
+            feat = xray_feats[i]
+            _, c_, w_, h_ = feat.shape
+            xray_feats[i] = rearrange(feat , " (b m) c w h -> b m c w h" , b = b , m=m)
+            #xray_feats[i] = xray_feats[i].reshape(b, m, c_, w_, h_) # B, M, C, W, H
         #pdb.set_trace()
         points_feats = self.project_points(xray_feats , points_proj)
 
@@ -78,8 +89,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         points_feats = self.points_wise_encoder(points_feats)
         #pdb.set_trace()
         local_feats = points_feats
-
-
+        
         return local_feats , global_features
 
 
@@ -88,7 +98,6 @@ class ProjectionImplictConditionModel(ModelMixin):
     def project_points(self, proj_feats ,points_proj):
         n_view = proj_feats[0].shape[1]
         # query view_specific features 
-        p_list = []
         p_list = []
         for i in range(n_view):
             f_list = []
@@ -126,12 +135,14 @@ class ProjectionImplictConditionModel(ModelMixin):
 
             #pdb.set_trace()
         if self.use_global_conditioning:
+            #pdb.set_trace()
             global_features = global_features.squeeze(-1).squeeze(-1) # b 2 c 
             global_features = rearrange(global_features , "b n_v c -> b (n_v c) 1 1 1 ").expand(-1,-1,H,W,D)
             global_features = global_features.permute(0,2,3,4,1) # 64 64 64 258
-            coords = coords.reshape(B,-1,3)
+            coords = rearrange(coords , "b h w d c -> b ( h w d ) c " , h=H , w=W , d=D)
             embedded = self.position_embedder(coords)
-            embedded = embedded.reshape(B, H, W, D, -1)  # 64 64 64  63
+            embedded = rearrange(embedded , "b (h w d) c -> b h w d c" , h=H , w=W , d=D)
+            #embedded = embedded.reshape(B, H, W, D, -1)  # 64 64 64  63
             #pdb.set_trace()
             outputs_global = self.gloabl_feature_encoder(torch.cat([embedded , global_features] , dim=-1))  # input channels ( 63+258 =  )  output channnels   (128)
             

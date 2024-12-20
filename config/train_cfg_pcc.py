@@ -5,78 +5,6 @@ from typing import Any, Dict, List, Optional
 from hydra.core.config_store import ConfigStore
 from hydra.conf import RunDir
 
-@dataclass
-class BaseTrainingConfig:
-    # Dir
-    logging_dir: str
-    output_dir: str
-
-    # Logger and checkpoint
-    logger: str = 'tensorboard'
-    checkpointing_steps: int = 500
-    checkpoints_total_limit: int = 20
-    valid_epochs: int = 100
-    valid_batch_size: int = 1
-    save_model_epochs: int = 100
-    resume_from_checkpoint: str = None
-
-    # Diffuion Models
-    model_config: str = None
-    ddpm_num_steps: int = 1000
-    ddpm_beta_schedule: str = 'linear'
-    prediction_type: str = 'epsilon'
-    ddpm_num_inference_steps: int = 100
-
-    #pcc_net models
-    layers: list = field(default_factory=lambda: [2, 2, 2, 2])  # 使用 default_factory
-    embed_dims: list = field(default_factory=lambda: [64, 128, 256, 512])  # 64, 128, 256, 512
-    mlp_ratios: list = field(default_factory=lambda: [8, 8, 4, 4])
-    heads: list = field(default_factory=lambda: [4, 4, 8, 8])
-    head_dim: list = field(default_factory=lambda: [24, 24, 24, 24])
-    with_coord: bool = True
-    time_embed_dims: list = field(default_factory=lambda: [16])
-    sample_size: int = 64
-    in_channels: int = 4
-    out_channels: int = 1
- 
-    # Training
-    seed: int = None
-    num_epochs: int = 200
-    train_batch_size: int = 2
-    dataloader_num_workers: int = 1
-    gradient_accumulation_steps: int = 1
-    mixed_precision: str = None
-    enable_xformers_memory_efficient_attention: bool = True
-    gradient_checkpointing: bool = False
-    eval_vis: bool = False
-    # Dataset
-    dataset_name: str = None
-    image_root: str = '/root/share/pcc_gan_demo/coords_with_idensity/train/coords'
-    coord_root: str = None
-    files_list_path: str = None
-
-
-    # LR Scheduler
-    lr_scheduler: str = 'constant'
-    lr_warmup_steps: int = 500
-
-    # AdamW
-    scale_lr = False
-    learning_rate: float = 1e-4
-    adam_beta1: float = 0.9
-    adam_beta2: float = 0.999
-    adam_weight_decay: float = 1e-2
-    adam_epsilon: float = 1e-08
-
-    # EMA
-    use_ema: bool = False
-    ema_max_decay: float = 0.9999
-    ema_inv_gamma: float = 1.0
-    ema_power: float = 3 / 4
-
-    # Hub
-    push_to_hub: bool = False
-    hub_model_id: str = ''
 
 
 @dataclass
@@ -96,8 +24,8 @@ class RunConfig:
     vis_before_training: bool = False
     limit_train_batches: Optional[int] = None
     limit_val_batches: Optional[int] = None
-    max_steps: int = 10_000
-    checkpoint_freq: int = 10
+    max_steps: int = 500000
+    checkpoint_freq: int = 1000
     val_freq: int = 1_000
     vis_freq: int = 1_000
     log_step_freq: int = 1
@@ -111,12 +39,12 @@ class RunConfig:
     sample_from_ema: bool = False 
     sample_save_evolutions: bool = True  # temporarily set by default
 
-    # Training config
-    freeze_feature_model: bool = True
+    # # Training config
+    # freeze_feature_model: bool = True
 
-    # Coloring training config
-    coloring_training_noise_std: float = 0.0
-    coloring_sample_dir: Optional[str] = None
+    # # Coloring training config
+    # coloring_training_noise_std: float = 0.0
+    # coloring_sample_dir: Optional[str] = None
 
 
 @dataclass
@@ -195,8 +123,8 @@ class DatasetConfig:
 class XrayPointsDataset(DatasetConfig):
     type: str = 'XrayPoints'
     root: str = 'F:/Data_Space/Pelvic1K/cnetrilize_overlap_blocks_64/'
-    files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_train_16.txt'
-    
+    train_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_train_16.txt'
+    test_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_test_16.txt'
     geo_config_path: str = 'F:/Code_Space/Implict_condition_model/config/geo_config/config_block_64.yaml'
     #sample_points setting
     blocks_size : int = 64 
@@ -208,7 +136,7 @@ class XrayPointsDataset(DatasetConfig):
 
 @dataclass
 class DataloaderConfig:
-    batch_size: int = 1 
+    batch_size: int = 2 
     num_workers: int = 1 
         
 
@@ -283,6 +211,8 @@ class CheckpointConfig:
     resume_training_optimizer: bool = True
     resume_training_scheduler: bool = True
     resume_training_state: bool = True
+
+
 @dataclass
 class ProjectConfig:
     run: RunConfig

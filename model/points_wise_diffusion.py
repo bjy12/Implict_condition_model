@@ -67,7 +67,7 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         
         # Add noise to idensity 
         x_t =  self.scheduler.add_noise(x_0, noise, timestep)
-
+        #pdb.set_trace()
         # Conditioning
         x_t_input = self.get_input_with_conditioning(x_t, xray_projs , points_proj , coords)
         #pdb.set_trace()
@@ -103,7 +103,12 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
 
     def forward(self, batch: dict , mode = 'train', **kwargs):
         coords_idensity , proj , points_proj  = self.process_batch(batch)
-        #pdb.set_trace()
+        coords_idensity, proj, points_proj = self.process_batch(batch)
+        # print("Feature stats:", {
+        #     "coords_range": (coords_idensity.min(), coords_idensity.max()),
+        #     "proj_range": (proj.min(), proj.max()),
+        #     "points_proj_range": (points_proj.min(), points_proj.max())
+        # })
 
 
         return self.forward_train(coords_idensity , points_proj , proj)

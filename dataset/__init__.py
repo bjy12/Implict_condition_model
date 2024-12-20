@@ -17,8 +17,9 @@ def get_dataset(cfg: ProjectConfig):
     dataset_cfg : XrayPointsDataset = cfg.dataset
     dataloader_cfg : DataloaderConfig = cfg.dataloader
 
+    train_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'train' )
+    test_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'test')
 
-    train_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , cfg.run.job )
 
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -27,8 +28,15 @@ def get_dataset(cfg: ProjectConfig):
         pin_memory=True,
         num_workers=dataloader_cfg.num_workers)
     
+    test_data_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=1,
+        shuffle=False,
+        pin_memory=True,
+        num_workers=dataloader_cfg.num_workers)
+    
 
-    return train_data_loader
+    return train_data_loader , test_data_loader
 
 
 

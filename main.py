@@ -85,12 +85,14 @@ def main(cfg: ProjectConfig):
     #pdb.set_trace()
     optimizer = training_utils.get_optimizer(cfg, model, accelerator)
     scheduler = training_utils.get_scheduler(cfg, optimizer)
-
+    
+    # Resume from checkpoint and create the initial training state
+    #* Sample process by resume checkpoints setting 
     train_state: training_utils.TrainState = training_utils.resume_from_checkpoint(cfg, model, optimizer, scheduler, model_ema)
 
     #Dataset
     #pdb.set_trace()
-    dataloader_train = get_dataset(cfg)
+    dataloader_train , dataloader_test = get_dataset(cfg)
     
     # Compute total training batch size
     total_batch_size = cfg.dataloader.batch_size * accelerator.num_processes * accelerator.gradient_accumulation_steps
@@ -104,6 +106,30 @@ def main(cfg: ProjectConfig):
         accelerator.init_trackers('demo')
     model: Points_WiseImplict_ConditionDiffusionModel
     optimizer: torch.optim.Optimizer
+    
+    # Sample from the model
+    if cfg.run.job == 'sample':
+        # Whether or not to use EMA parameters for sampling
+        if cfg.run.sample_from_ema:
+            assert model_ema is not None
+            model_ema.to(accelerator.device)
+            sample_context = model_ema.average_parameters
+        else:
+            sample_context = nullcontext
+        # Sample
+        with sample_context():
+            sample(
+                cfg=cfg,
+                model=model,
+                dataloader=dataloader_test,
+                accelerator=accelerator,
+            )
+        # if cfg.logging.logger_opt and accelerator.is_main_process:
+        #     wandb.finish()
+        time.sleep(5)
+        return        
+
+
 
     #pdb.set_trace()
     # Info

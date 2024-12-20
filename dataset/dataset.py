@@ -16,12 +16,15 @@ import random
 from dataclasses import dataclass
 import pdb
 class XrayPointsCTDataset(data.Dataset):
-    def __init__(self,  cfg: XrayPointsDataset , path_dict , job='train'):
+    def __init__(self,  cfg: XrayPointsDataset , path_dict , mode='train'):
         super().__init__()
         # path setting 
         #pdb.set_trace()
         self.root_dir = cfg.root
-        files_list = cfg.files_list 
+        if mode == 'train':
+            files_list = cfg.train_files_list
+        elif mode == 'test':
+            files_list = cfg.test_files_list
         self.files_name_list = get_filesname_from_txt(files_list)
         random.shuffle(self.files_name_list)
         #pdb.set_trace()
@@ -141,15 +144,16 @@ class XrayPointsCTDataset(data.Dataset):
         
         # norm
         block_values = (block_values * 2 ) - 1
-        coords = self.blocks[b_idx]
+        points = self.blocks[b_idx]
         #pdb.set_trace()
-        temp = np.concatenate([coords , block_values] , axis=3 )
-        temp = temp.reshape(-1,4)
-        points = temp[:,:3]
+        points_for_project = points.reshape(-1,3)        
+        # temp = np.concatenate([coords , block_values] , axis=3 )
+        # temp = temp.reshape(-1,4)
+        # points = temp[:,:3]
         #pdb.set_trace()
 
 
-        return coords , points , block_values
+        return points , points_for_project , block_values
 
     def __getitem__(self, index):
         #pdb.set_trace()
@@ -164,8 +168,8 @@ class XrayPointsCTDataset(data.Dataset):
             points_proj = self.project_points(points,angles)
 
         elif self.sample_points_type == 'overlap_block':
-            points ,coords , points_gt = self.get_blocks_overlap(name)
-            points_proj = self.project_points(coords, angles)
+            points ,points_for_project , points_gt = self.get_blocks_overlap(name)
+            points_proj = self.project_points(points_for_project, angles)
             points =  (points - 0.5 ) * 2 
             #pdb.set_trace()
 
