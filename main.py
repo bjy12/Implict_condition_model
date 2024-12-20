@@ -218,7 +218,7 @@ def main(cfg: ProjectConfig):
                     save_file_path = os.path.join(os.getcwd() , checkpoint_path)
                     os.makedirs(save_file_path , exist_ok=True)
                     check_points_save_path = os.path.join(save_file_path ,'checkpoint.pth')
-                    pdb.set_trace()
+                    #pdb.set_trace()
                     accelerator.save(checkpoint_dict, check_points_save_path)
                     print(f'Saved checkpoint to {Path(checkpoint_path).resolve()}')
                 # Save a last checkpoint
