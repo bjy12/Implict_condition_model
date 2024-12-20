@@ -52,7 +52,7 @@ def get_optimizer(cfg: ProjectConfig, model: torch.nn.Module, accelerator: Accel
             "weight_decay": 0.0,
         },
     ]
-
+    #pdb.set_trace()
     # Construct optimizer
     if cfg.optimizer.type == 'torch':
         Optimizer: torch.optim.Optimizer = getattr(torch.optim, cfg.optimizer.name)

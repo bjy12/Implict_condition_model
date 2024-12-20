@@ -25,15 +25,17 @@ class RunConfig:
     limit_train_batches: Optional[int] = None
     limit_val_batches: Optional[int] = None
     max_steps: int = 500000
-    checkpoint_freq: int = 1000
+    check_save_freq: int = 5000
+    checkpoint_last_freq: int = 200
     val_freq: int = 1_000
     vis_freq: int = 1_000
     log_step_freq: int = 1
     print_step_freq: int = 100
 
     # Inference config
-    num_inference_steps: int = 1000
+    num_inference_steps: int = 500
     diffusion_scheduler: Optional[str] = 'ddpm'
+    return_sample_every_n_steps: int = -1
     num_samples: int = 1
     num_sample_batches: Optional[int] = None
     sample_from_ema: bool = False 
@@ -145,7 +147,7 @@ class DataloaderConfig:
 class OptimizerConfig:
     type: str
     name: str
-    lr: float = 1e-3
+    lr: float = 1e-4
     weight_decay: float = 0.0
     scale_learning_rate_with_batch_size: bool = False
     gradient_accumulation_steps: int = 1
@@ -166,8 +168,8 @@ class AdadeltaOptimizerConfig(OptimizerConfig):
 class AdamOptimizerConfig(OptimizerConfig):
     type: str = 'torch'
     name: str = 'AdamW'
-    weight_decay: float = 1e-6
-    kwargs: Dict = field(default_factory=lambda: dict(betas=(0.95, 0.999)))
+    weight_decay: float = 1e-2
+    kwargs: Dict = field(default_factory=lambda: dict(betas=(0.9, 0.999)))
 
 @dataclass
 class LoggingConfig:
@@ -207,7 +209,7 @@ class CosineSchedulerConfig(SchedulerConfig):
 @dataclass
 class CheckpointConfig:
     resume: Optional[str] = None
-    resume_training: bool = True
+    resume_training: bool = False
     resume_training_optimizer: bool = True
     resume_training_scheduler: bool = True
     resume_training_state: bool = True

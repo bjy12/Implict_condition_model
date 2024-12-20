@@ -107,15 +107,16 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
                        scheduler: Optional[str] = 'ddpm' ,
                        num_inference_steps: Optional[int] = 1000,
                        eta: Optional[float] = 0.0,  # for DDIM
-                       return_sample_every_n_steps: int =  -1 ,
+                       return_sample_every_n_steps: int =  100 ,
                        disable_tqdm: bool = False,
     ):  
         scheduler = self.scheduler if scheduler is None else self.schedulers_map[scheduler]
 
         device = self.device
-  
+        #pdb.set_trace()
         b , h , w , d , _ = coords_idensity.shape
         coords = coords_idensity[...,:3]
+        idensity = coords_idensity[...,3:4]
         c = 1  # only predict idensity
         x_t = torch.randn(b , h , w , d ,c , device=device)
 
@@ -135,40 +136,42 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         progress_bar = tqdm(scheduler.timesteps.to(device), desc=f'Sampling ({x_t.shape})', disable=disable_tqdm)
         for i , t in enumerate(progress_bar):
             x_t_input = self.get_input_with_conditioning(x_t ,  xray_projs ,  points_proj , coords )
-
+            #pdb.set_trace()
             noise_pred = self.noised_pred_model(x_t_input,  t.reshape(1).expand(b))
-
+            #pdb.set_trace()
+            x_t = rearrange(x_t , ' b h w d c -> b c h w d ')
             x_t = scheduler.step(noise_pred, t, x_t, **extra_step_kwargs).prev_sample
-
+            x_t = rearrange(x_t , ' b c h w d -> b h w d c')
             # Append to output list if desired
             if (return_all_outputs and (i % return_sample_every_n_steps == 0 or i == len(scheduler.timesteps) - 1)):
                 all_outputs.append(x_t)
 
-        x_t = (x_t / 2 + 0.5 ).clamp(0,1)
-        sample_result = x_t.cpu().numpy()
+        idensity = idensity.cpu().numpy()
+        if return_all_outputs:
+            pdb.set_trace()
+            all_outputs = torch.stack(all_outputs, dim=1)
+            all_outputs = (all_outputs / 2 + 0.5 ).clamp(0,1)
+            all_outputs.cpu().numpy()
+            return all_outputs , idensity
+        else:
+            x_t = (x_t / 2 + 0.5 ).clamp(0,1)
+            sample_result = x_t.cpu().numpy()
+            return sample_result , idensity
 
-        return sample_result
-
-
-
-            
-
-
-
-
-
-
-
-
-
-        
 
     def forward(self, batch: dict , mode = 'train', **kwargs):
         coords_idensity , proj , points_proj  = self.process_batch(batch)
         if mode == 'train':
             return self.forward_train(coords_idensity , points_proj , proj)
         elif mode == 'sample':
-            return self.forward_sample(coords_idensity , points_proj , proj)
+            sample_params = {
+                'num_inference_steps': kwargs.get('num_inference_steps', 1000),
+                'eta': kwargs.get('eta', 0.0),
+                'return_sample_every_n_steps': kwargs.get('return_sample_every_n_steps', 100),
+                'disable_tqdm': kwargs.get('disable_tqdm', False),
+                'scheduler': kwargs.get('scheduler', 'ddpm')
+            }            
+            return self.forward_sample(coords_idensity , points_proj , proj  , **sample_params)
         # print("Feature stats:", {
         #     "coords_range": (coords_idensity.min(), coords_idensity.max()),
         #     "proj_range": (proj.min(), proj.max()),

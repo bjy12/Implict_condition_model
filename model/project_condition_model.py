@@ -89,7 +89,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         points_feats = self.points_wise_encoder(points_feats)
         #pdb.set_trace()
         local_feats = points_feats
-        
+
         return local_feats , global_features
 
 
@@ -126,7 +126,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         x_t_input.append(coords.clone())
         B , H , W , D , _  = coords.shape
         condtion_list = []
-
+        #pdb.set_trace()
         if self.use_local_conditioning:
             local_features , global_features = self.get_local_conditioning(projs_xray, points_proj)
             #pdb.set_trace()
