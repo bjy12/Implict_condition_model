@@ -366,7 +366,7 @@ class ContextCluster_Denoised(nn.Module):
                  fold_w=[8, 4, 2, 1], fold_h=[8, 4, 2, 1], fold_d=[8, 4, 2, 1],
                  heads=[2, 4, 6, 8], head_dim=[16, 16, 32, 32],
                  time_embed_dims=None,
-                 in_channels = 260 , 
+                 in_channels = 4 , 
                  out_channels = 1 ,
                  **kwargs):
         super().__init__()
@@ -524,6 +524,7 @@ class ContextCluster_Denoised(nn.Module):
             timesteps (torch.Tensor): Time embeddings [B]
         """
         # 1. Process time embeddings
+        #pdb.set_trace()
         time_emb = self.time_mlp(timesteps)  # [B, time_emb_dim]
         
         # 2. Initial feature embedding with coordinates if needed

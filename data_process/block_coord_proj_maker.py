@@ -279,9 +279,7 @@ def _convert_blocks_v2(data , ct_res):
     coords_vals = ct[coord_index[:,0] ,coord_index[:,1] ,coord_index[:,2]]
     data['blocks_vals'] = coords_vals
     data['blocks_coords'] = coords_norm
-
     #pdb.set_trace()
-
     return data 
 
 #* 从图像中心切割出一个固定大小的图像

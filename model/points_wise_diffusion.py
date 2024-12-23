@@ -12,7 +12,6 @@ from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 from diffusers.schedulers.scheduling_pndm import PNDMScheduler
 from torch import Tensor
 from tqdm import tqdm
-
 from model.denoised_model import DenoisedModel
 from model.project_condition_model import ProjectionImplictConditionModel
 from utils_file.model_utils import get_custom_betas
@@ -61,7 +60,7 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         #pdb.set_trace()
         # Sample random noise from idensity 
         noise = torch.randn_like(x_0)
-        
+        #pdb.set_trace()
         # Sample random timesteps for each idensity
         timestep = torch.randint(0, self.scheduler.num_train_timesteps, (B,), 
             device=self.device, dtype=torch.long) 
@@ -176,10 +175,7 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         #     "coords_range": (coords_idensity.min(), coords_idensity.max()),
         #     "proj_range": (proj.min(), proj.max()),
         #     "points_proj_range": (points_proj.min(), points_proj.max())
-        # })
-
-
-        return 
+        # }) 
 
 
          

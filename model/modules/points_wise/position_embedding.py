@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import pdb
 # Positional encoding (section 5.1)
 class Embedder:
     def __init__(self, **kwargs):
@@ -52,26 +52,39 @@ def get_embedder(multires, i=0):
     return embed, embedder_obj.out_dim
 
 
-class GlobalFeatureFilter(nn.Module):
+
+class NerfStyleEncoder(nn.Module):
     def __init__(self, input_ch , output_ch):
-        super(GlobalFeatureFilter, self).__init__()
+        super().__init__()
+
         self.input_ch = input_ch
         self.output_ch = output_ch
-        
+
         if self.input_ch != self.output_ch:
-            # 可以添加更复杂的变换
-            self.transform = nn.Sequential(
-                nn.Linear(self.input_ch, self.input_ch * 2),
-                nn.ReLU(),
-                nn.Linear(self.input_ch * 2, self.output_ch)
-            )
-    
+            self.linear = nn.Linear(self.input_ch , self.output_ch)
+
     def forward(self, x):
-        # x: (B, H, W, D, C)
         if self.input_ch != self.output_ch:
-            B, H, W, D, C = x.shape
-            x = x.reshape(B * H * W * D, C)
-            x = self.transform(x)
-            x = x.reshape(B, H, W, D, -1)
-        
-        return {'outputs': x}
+            x = self.linear(x)
+        return x     
+
+
+
+
+class GlobalFeatureEncoder(nn.Module):
+    def __init__(self, input_ch , output_ch , merge_mode):
+        super(GlobalFeatureEncoder, self).__init__()
+        self.nerf_style_encoded = NerfStyleEncoder(input_ch, output_ch)
+        self.merge_mode = merge_mode
+
+    def forward(self, x  , g_f):
+        """
+        x is coords embedded
+        l_f is local feature 
+        g_g is global feature 
+        """
+        #pdb.set_trace()
+        g_f = self.nerf_style_encoded(torch.cat([x,g_f] , dim=-1))
+
+        return g_f
+    

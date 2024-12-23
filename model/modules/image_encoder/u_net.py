@@ -49,6 +49,7 @@ class UNet(nn.Module):
         x = self.up4(x, x1)
 
         logits = self.outc(x)
+        print(f"global_feature range: {global_feature.min():.3f} to {global_feature.max():.3f}")
         return logits , global_feature
 
 

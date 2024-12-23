@@ -1,7 +1,7 @@
 import torch
 from config.train_cfg_pcc import XrayPointsDataset ,  DataloaderConfig , ProjectConfig
 from .dataset import XrayPointsCTDataset
-
+from .dataset_v1 import XrayPointsCTDatasetV2
 
 PATH_DICT = {
             'image': 'images/{}.nii.gz',
@@ -17,8 +17,14 @@ def get_dataset(cfg: ProjectConfig):
     dataset_cfg : XrayPointsDataset = cfg.dataset
     dataloader_cfg : DataloaderConfig = cfg.dataloader
 
-    train_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'train' )
-    test_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'test')
+    # train_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'train' )
+    # test_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'test')
+
+          
+    
+    train_dataset = XrayPointsCTDatasetV2(dataset_cfg , PATH_DICT , 'train' )
+    test_dataset = XrayPointsCTDatasetV2(dataset_cfg , PATH_DICT , 'test')
+
 
 
     train_data_loader = torch.utils.data.DataLoader(

@@ -143,7 +143,7 @@ class XrayPointsCTDataset(data.Dataset):
         block_values = block_values.astype(np.float32) / 255.
         
         # norm
-        block_values = (block_values * 2 ) - 1
+        #block_values = (block_values * 2 ) - 1
         points = self.blocks[b_idx]
         #pdb.set_trace()
         points_for_project = points.reshape(-1,3)        

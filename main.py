@@ -90,11 +90,11 @@ def main(cfg: ProjectConfig):
     # Resume from checkpoint and create the initial training state
     #* Sample process by resume checkpoints setting 
     train_state: training_utils.TrainState = training_utils.resume_from_checkpoint(cfg, model, optimizer, scheduler, model_ema)
-    pdb.set_trace()
+    #pdb.set_trace()
     #Dataset
     #pdb.set_trace()
     dataloader_train , dataloader_test = get_dataset(cfg)
-    
+    pdb.set_trace()
     # Compute total training batch size
     total_batch_size = cfg.dataloader.batch_size * accelerator.num_processes * accelerator.gradient_accumulation_steps
     # Setup.
@@ -154,7 +154,7 @@ def main(cfg: ProjectConfig):
         for i , batch in enumerate(progress_bar):
             #pdb.set_trace()
             if (cfg.run.limit_train_batches is not None) and (i >= cfg.run.limit_train_batches): break
-            #model.train()
+            model.train()
             #pdb.set_trace()
             # Gradient accumulation
             with accelerator.accumulate(model):

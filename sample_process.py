@@ -18,7 +18,7 @@ def sample(
     accelerator: Accelerator,
     output_dir: str = 'sample',
 ):
-    
+    pdb.set_trace()
     model.eval()
     progress_bar = tqdm(dataloader , disable=(not accelerator.is_main_process))
 

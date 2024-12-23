@@ -24,8 +24,8 @@ class RunConfig:
     vis_before_training: bool = False
     limit_train_batches: Optional[int] = None
     limit_val_batches: Optional[int] = None
-    max_steps: int = 500000
-    check_save_freq: int = 5000
+    max_steps: int = 700000
+    check_save_freq: int = 10000
     checkpoint_last_freq: int = 200
     val_freq: int = 1_000
     vis_freq: int = 1_000
@@ -60,8 +60,9 @@ class ImageEncoderConfig:
 class PointCloudProjectionModelConfig:
         
     # Feature extraction arguments
+    use_coords: bool = False
     use_local_features: bool = True
-    use_global_features: bool = True
+    use_global_features: bool = False
 
     #points_wise_type 
     encoder_type: str = 'view_mixer'
@@ -94,7 +95,7 @@ class PointCloudDiffusionModelConfig(PointCloudProjectionModelConfig):
     # Denoised model parameters (in a dict to match __init__)
     denoised_model_config: Dict = field(default_factory=lambda: {
         'model_type': 'pcc',
-        'layers': [2, 2, 2, 2],
+        'layers': [1, 1, 1, 1],
         'norm_layer': 'GroupNorm',
         'embed_dims': [64, 128, 256, 512],
         'mlp_ratios': [8, 8, 4, 4],
@@ -112,7 +113,7 @@ class PointCloudDiffusionModelConfig(PointCloudProjectionModelConfig):
         'with_coord': True,
         'time_embed_dims': [16],
         'sample_size': 64,
-        'in_channels': 260,
+        'in_channels': 129,  # 3 coords  global  and local  is 256  
         'out_channels': 1
     })
 
@@ -124,13 +125,13 @@ class DatasetConfig:
 @dataclass
 class XrayPointsDataset(DatasetConfig):
     type: str = 'XrayPoints'
-    root: str = 'F:/Data_Space/Pelvic1K/cnetrilize_overlap_blocks_64/'
+    root: str = 'F:/Data_Space/Pelvic1K/cent_block_64_proj_res256_s2_img_res_256_s1/'
     train_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_train_16.txt'
     test_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_test_16.txt'
-    geo_config_path: str = 'F:/Code_Space/Implict_condition_model/config/geo_config/config_block_64.yaml'
+    geo_config_path: str = 'F:/Code_Space/Implict_condition_model/config/geo_config/config_block_64_proj256_s2_img256_s1.yaml'
     #sample_points setting
-    blocks_size : int = 64 
-    sample_points_type: str = 'overlap_block'
+    #blocks_size : int = 64 
+    #sample_points_type: str = 'overlap_block'
 
     #project setting 
     n_views: int = 2 
@@ -138,20 +139,19 @@ class XrayPointsDataset(DatasetConfig):
 
 @dataclass
 class DataloaderConfig:
-    batch_size: int = 2 
+    batch_size: int = 4 
     num_workers: int = 1 
         
-
 
 @dataclass
 class OptimizerConfig:
     type: str
     name: str
-    lr: float = 1e-4
+    lr: float = 5e-4
     weight_decay: float = 0.0
     scale_learning_rate_with_batch_size: bool = False
     gradient_accumulation_steps: int = 1
-    clip_grad_norm: Optional[float] = 50.0  # 5.0
+    clip_grad_norm: Optional[float] =None  # 5.0
     kwargs: Dict = field(default_factory=lambda: dict())
 
 
@@ -208,8 +208,8 @@ class CosineSchedulerConfig(SchedulerConfig):
     ))
 @dataclass
 class CheckpointConfig:
-    resume: Optional[str] = None
-    resume_training: bool = False
+    resume: Optional[str] = 'F:/Code_Space/Implict_condition_model/outputs/implict_diff/2024-12-21--19-21-01/checkpoint-step-80000/checkpoint.pth'
+    resume_training: bool = True
     resume_training_optimizer: bool = True
     resume_training_scheduler: bool = True
     resume_training_state: bool = True
@@ -232,7 +232,7 @@ class ProjectConfig:
         {'logging': 'default'},
         {'model': 'diffrec'},
         {'optimizer': 'adam'},
-        {'scheduler': 'cosine'},
+        {'scheduler': 'linear'},
         {'ema': 'default'},
         {'dataset': 'XrayPoints'},
         {'dataloader':'default'},

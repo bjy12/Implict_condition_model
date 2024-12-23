@@ -11,7 +11,7 @@ from einops import rearrange
 from utils_file.model_utils import index_2d
 from model.modules.image_encoder.u_net import UNet
 from model.modules.points_wise.points_encoder import PointsWiseFeatureEncoder
-from model.modules.points_wise.position_embedding import get_embedder , GlobalFeatureFilter
+from model.modules.points_wise.position_embedding import get_embedder , GlobalFeatureEncoder
 import pdb 
 
 SchedulerClass = Union[DDPMScheduler, DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
@@ -21,6 +21,7 @@ class ProjectionImplictConditionModel(ModelMixin):
     def __init__(
         self,
         image_encoder: dict = {},
+        use_coords:bool = True,
         use_local_features: bool = True,
         use_global_features: bool = False,
         encoder_type: str = 'view_mixer' ,
@@ -32,6 +33,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         super().__init__()
 
         self.image_encoder = UNet(**image_encoder)
+        self.use_coords = use_coords
         self.use_local_conditioning = use_local_features
         self.use_global_conditioning = use_global_features
         self.num_views = num_views
@@ -40,8 +42,7 @@ class ProjectionImplictConditionModel(ModelMixin):
 
         self.points_wise_encoder = PointsWiseFeatureEncoder(encoder_type , num_views)
         self.position_embedder , _  = get_embedder(10 , 0 )
-        self.gloabl_feature_encoder = GlobalFeatureFilter(gl_f_input_c , gl_f_output_c)
-        self.merge_mode = merge_mode
+        self.gloabl_feature_encoder = GlobalFeatureEncoder(gl_f_input_c , gl_f_output_c , merge_mode )
 
 
     def image_wise_encoder(self, projs):
@@ -67,11 +68,14 @@ class ProjectionImplictConditionModel(ModelMixin):
         #pdb.set_trace()
         #proj_xray = proj_xray.reshape(b*m , c, w, h)
         proj_xray = rearrange(proj_xray , "b m c w h -> (b m) c w h")
-        xray_feats , global_features = self.image_encoder(proj_xray)  # # global feature  b*m , c , 1, 1
+        xray_feats , global_features = self.image_encoder(proj_xray) # xray feats (b m) c w d   global_features (b m) c 1 1   m is n_view 
+        #pdb.set_trace()
+        #pdb.set_trace()
+        global_features = global_features.squeeze(-1).squeeze(-1)
+        global_features = rearrange(global_features , '(b m) c -> b (m c) ', b = b , m = m) # b m c 
         #pdb.set_trace()
         c_out = global_features.shape[1]
 
-        global_features = rearrange(global_features , '(b m) c h w -> b m c h w' , b = b , m = m)
         #pdb.set_trace()
 
         #global_features = global_features.reshape(b,m,c_out,1,1)
@@ -80,7 +84,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         for i in range(len(xray_feats)):
             feat = xray_feats[i]
             _, c_, w_, h_ = feat.shape
-            xray_feats[i] = rearrange(feat , " (b m) c w h -> b m c w h" , b = b , m=m)
+            xray_feats[i] = rearrange(feat , " ( b m ) c w h -> b m c w h" , b = b , m=m)
             #xray_feats[i] = xray_feats[i].reshape(b, m, c_, w_, h_) # B, M, C, W, H
         #pdb.set_trace()
         points_feats = self.project_points(xray_feats , points_proj)
@@ -104,6 +108,8 @@ class ProjectionImplictConditionModel(ModelMixin):
             for proj_f in proj_feats:
                 feat = proj_f[:, i, ...] # B, C, W, H
                 p = points_proj[:, i, ...] # B, N, 2
+                # if torch.any(torch.abs(p) > 1):
+                #     print(f"Warning: coordinates out of range [-1,1]: {p.min():.3f} to {p.max():.3f}")
                 p_feats = index_2d(feat, p) # B, C, N
                 f_list.append(p_feats)
             p_feats = torch.cat(f_list, dim=1)
@@ -123,40 +129,56 @@ class ProjectionImplictConditionModel(ModelMixin):
         #B , C , H , W , D = x_t.shape
         #pdb.set_trace()
         x_t_input = [x_t]
-        x_t_input.append(coords.clone())
+        #x_t_input.append(coords)
         B , H , W , D , _  = coords.shape
-        condtion_list = []
+        #condtion_list = []
         #pdb.set_trace()
+        if self.use_coords:
+            x_t_input.append(coords)
+
+        local_features , global_features = self.get_local_conditioning(projs_xray, points_proj)
+
         if self.use_local_conditioning:
-            local_features , global_features = self.get_local_conditioning(projs_xray, points_proj)
             #pdb.set_trace()
             local_features = rearrange(local_features , 'b c (h w d) -> b h w d c', h=H, w=W, d=D) 
-            condtion_list.append(local_features)
+            #pdb.set_trace()
+            x_t_input.append(local_features)
 
             #pdb.set_trace()
         if self.use_global_conditioning:
             #pdb.set_trace()
-            global_features = global_features.squeeze(-1).squeeze(-1) # b 2 c 
-            global_features = rearrange(global_features , "b n_v c -> b (n_v c) 1 1 1 ").expand(-1,-1,H,W,D)
-            global_features = global_features.permute(0,2,3,4,1) # 64 64 64 258
-            coords = rearrange(coords , "b h w d c -> b ( h w d ) c " , h=H , w=W , d=D)
-            embedded = self.position_embedder(coords)
-            embedded = rearrange(embedded , "b (h w d) c -> b h w d c" , h=H , w=W , d=D)
+            global_features = global_features.unsqueeze(-1) # b 1 (n_view * c)
+            global_features = global_features.repeat(1,1,(H*W*D))  
+            #global_features = rearrange(global_features , 'b c ( h w d ) -> b c h w d ' , h=H , w = W , d = D)
+            global_features = rearrange(global_features , ' b c n -> b n c ')
+
+            #pdb.set_trace()
+
+            # global_features = rearrange(global_features , "b n_v c -> b (n_v c) 1 1 1 ").expand(-1,-1,H,W,D)
+            # global_features = global_features.permute(0,2,3,4,1) # 64 64 64 258
+            # global_features = rearrange(global_features , ' b c h w d -> b h w d c')
+            #pdb.set_trace()
+            
+            global_coords = coords
+            global_coords = rearrange(global_coords , "b h w d c -> b ( h w d ) c " , h=H , w=W , d=D)
+
+            #pdb.set_trace()
+            embedded_coords = self.position_embedder(global_coords)
+            #pdb.set_trace()
+            #embedded = rearrange(embedded , "b (h w d) c -> b h w d c" , h=H , w=W , d=D)
             #embedded = embedded.reshape(B, H, W, D, -1)  # 64 64 64  63
             #pdb.set_trace()
-            outputs_global = self.gloabl_feature_encoder(torch.cat([embedded , global_features] , dim=-1))  # input channels ( 63+258 =  )  output channnels   (128)
-            
+            outputs_global = self.gloabl_feature_encoder(embedded_coords, global_features)  # input channels ( 63+258 =  )  output channnels   (128)  
+            #pdb.set_trace()
+            outputs_global = rearrange(outputs_global , " b (h w d ) c -> b h w d c " , h=H , w=W , d=D)
+            x_t_input.append(outputs_global)
             #pdb.set_trace()
 
-        if self.merge_mode == 'concat': 
-            condition_features = torch.cat([outputs_global['outputs'] , local_features] , dim=-1)
-        #pdb.set_trace()
-        x_t_input.append(condition_features)  # p_embedding  global feature  local feature 
         
         x_t_input  = torch.cat(x_t_input , dim=-1)  # (B, h , w ,d , noised_i+pos+lcoal_d+global_d )
-
+        
         x_t_input = rearrange(x_t_input , ' b h w d c -> b c h w d ')
-
+        
         #pdb.set_trace()
           
         return x_t_input
