@@ -50,7 +50,8 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
                       coords_idensity: Optional[Tensor] ,  #  ( b , h ,  w ,  d , 3 + 1)  3 is x y z 1 is idensity
                       points_proj: Optional[Tensor] , # (b ,  , n_points , d )
                       xray_projs: Optional[Tensor] ,  # (b , 2 , 1 , u ,v )
-                      return_intermediate_steps: bool = False
+                      return_intermediate_steps: bool = False,
+                      idx: int = 0 ,
         ):
         B  =   coords_idensity.shape[0]
         coords = coords_idensity[:,:,:,:,:3]
@@ -69,7 +70,7 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         x_t =  self.scheduler.add_noise(x_0, noise, timestep)
         #pdb.set_trace()
         # Conditioning
-        x_t_input = self.get_input_with_conditioning(x_t, xray_projs , points_proj , coords)
+        x_t_input = self.get_input_with_conditioning(x_t, xray_projs , points_proj , coords , idx)
         #pdb.set_trace()
         # Forward predict nosie 
         noise_pred = self.noised_pred_model(x_t_input, timestep)
@@ -94,7 +95,9 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         points_proj = batch['points_proj']    
         #pdb.set_trace()
         #points = rearrange(points , ' b n c -> b c n')
-        coords_idensity = torch.cat([points , idensity]  , dim=-1)
+        b , c , h , w ,d =points.shape
+        coords_idensity = torch.cat([points , idensity]  , dim=1)
+        coords_idensity = rearrange(coords_idensity , "b c h w d -> b h w d c " , h=h , w=w , d=d)
 
         return coords_idensity , proj , points_proj
     
@@ -158,10 +161,10 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
             return sample_result , idensity
 
 
-    def forward(self, batch: dict , mode = 'train', **kwargs):
+    def forward(self, batch: dict , idx : int ,  mode = 'train', **kwargs):
         coords_idensity , proj , points_proj  = self.process_batch(batch)
         if mode == 'train':
-            return self.forward_train(coords_idensity , points_proj , proj)
+            return self.forward_train(coords_idensity , points_proj , proj   , idx=idx  )
         elif mode == 'sample':
             sample_params = {
                 'num_inference_steps': kwargs.get('num_inference_steps', 1000),

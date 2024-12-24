@@ -160,8 +160,10 @@ def main(cfg: ProjectConfig):
             with accelerator.accumulate(model):
                 #pdb.set_trace()
                 # Forward
-                loss = model(batch, mode='train')
-
+                # print( ' train_step : ' , train_state.step)
+                #pdb.set_trace()
+                loss = model(batch,  train_state.step , mode='train')
+                #pdb.set_trace()
                 # Backward
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:

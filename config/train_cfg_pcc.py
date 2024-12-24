@@ -15,7 +15,7 @@ class CustomHydraRunDir(RunDir):
 @dataclass
 class RunConfig:
 
-    name: str = 'implict_diff'
+    name: str = 'proj_vis_demo'
     job: str = 'train'
     mixed_precision: str = 'no'
     cpu: bool = False
@@ -24,7 +24,7 @@ class RunConfig:
     vis_before_training: bool = False
     limit_train_batches: Optional[int] = None
     limit_val_batches: Optional[int] = None
-    max_steps: int = 700000
+    max_steps: int = 100000
     check_save_freq: int = 10000
     checkpoint_last_freq: int = 200
     val_freq: int = 1_000
@@ -61,6 +61,8 @@ class PointCloudProjectionModelConfig:
         
     # Feature extraction arguments
     use_coords: bool = False
+    save_encoder: bool = True 
+    save_freq: int = 100
     use_local_features: bool = True
     use_global_features: bool = False
 
@@ -125,10 +127,10 @@ class DatasetConfig:
 @dataclass
 class XrayPointsDataset(DatasetConfig):
     type: str = 'XrayPoints'
-    root: str = 'F:/Data_Space/Pelvic1K/cent_block_64_proj_res256_s2_img_res_256_s1/'
-    train_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_train_16.txt'
-    test_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_test_16.txt'
-    geo_config_path: str = 'F:/Code_Space/Implict_condition_model/config/geo_config/config_block_64_proj256_s2_img256_s1.yaml'
+    root: str = '/root/share/dataset_v2/cent_block_64_proj_res256_s2_img_res_256_s1'
+    train_files_list: str = '/root/codespace/Implict_condition_model/dataset/files_list/pelvic_coord_train_16.txt'
+    test_files_list: str = '/root/codespace/Implict_condition_model/dataset/files_list/pelvic_coord_test_16.txt'
+    geo_config_path: str = '/root/codespace/Implict_condition_model/config/geo_config/config_block_64_proj256_s2_img256_s1.yaml'
     #sample_points setting
     #blocks_size : int = 64 
     #sample_points_type: str = 'overlap_block'
@@ -208,8 +210,8 @@ class CosineSchedulerConfig(SchedulerConfig):
     ))
 @dataclass
 class CheckpointConfig:
-    resume: Optional[str] = 'F:/Code_Space/Implict_condition_model/outputs/implict_diff/2024-12-21--19-21-01/checkpoint-step-80000/checkpoint.pth'
-    resume_training: bool = True
+    resume: Optional[str] = None
+    resume_training: bool = False
     resume_training_optimizer: bool = True
     resume_training_scheduler: bool = True
     resume_training_state: bool = True

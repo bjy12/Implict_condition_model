@@ -1,5 +1,5 @@
 from typing import Optional, Union
-
+import os
 import torch
 from diffusers.schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler
 from diffusers.schedulers.scheduling_lms_discrete import LMSDiscreteScheduler
@@ -21,6 +21,8 @@ class ProjectionImplictConditionModel(ModelMixin):
     def __init__(
         self,
         image_encoder: dict = {},
+        save_encoder: bool = False,
+        save_freq: int = 100,
         use_coords:bool = True,
         use_local_features: bool = True,
         use_global_features: bool = False,
@@ -33,6 +35,11 @@ class ProjectionImplictConditionModel(ModelMixin):
         super().__init__()
 
         self.image_encoder = UNet(**image_encoder)
+        if save_encoder == True:
+            self.save_encoder_output = save_encoder
+            self.save_freq = save_freq
+            self.save_encoder_feat_path = './encoder_feat_map'
+
         self.use_coords = use_coords
         self.use_local_conditioning = use_local_features
         self.use_global_conditioning = use_global_features
@@ -58,8 +65,61 @@ class ProjectionImplictConditionModel(ModelMixin):
         #pdb.set_trace()
 
         return proj_feats
-    
-    def get_local_conditioning(self,proj_xray: Tensor , points_proj:Tensor):
+    def visualize_xray_features(self, xray_feats, save_dir, channel_ids=None, batch_idx=0):
+        """
+        可视化并保存指定通道的X光特征图
+        Args:
+            xray_feats: List of tensors [(B*M, C, H, W), ...]
+            save_dir: 特征图保存目录
+            channel_ids: 要保存的通道索引列表，如果为None则保存所有通道
+            batch_idx: 要可视化的batch中的索引，默认为0
+        """
+        import matplotlib.pyplot as plt
+        import os
+        import numpy as np
+        
+        def process_feature_map(feat_map):
+            # 归一化到[0,1]范围
+            feat_map = feat_map.detach().cpu().numpy()
+            feat_map = (feat_map - feat_map.min()) / (feat_map.max() - feat_map.min() + 1e-8)
+            return feat_map
+        
+        # 创建保存目录
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 处理每个尺度的特征
+        for scale_idx, feat in enumerate(xray_feats):
+            B, C, H, W = feat.shape
+            pdb.set_trace()
+            # 确定要处理的通道
+            if channel_ids is None:
+                channels_to_process = range(C)
+            else:
+                channels_to_process = channel_ids
+                
+            # 对每个选定的通道进行处理
+            for c in channels_to_process:
+                if c >= C:
+                    print(f"Warning: Channel {c} exceeds feature map channels {C}")
+                    continue
+                    
+                # 处理特征图
+                feature_map = process_feature_map(feat[batch_idx, c])
+                
+                # 创建图像
+                plt.figure(figsize=(8, 8))
+                plt.imshow(feature_map, cmap='gray')
+                plt.colorbar()
+                plt.title(f'Scale {scale_idx}, Channel {c}')
+                plt.axis('off')
+                
+                # 保存图像
+                save_path = os.path.join(save_dir, f'scale_{scale_idx}_channel_{c}.png')
+                plt.savefig(save_path)
+                plt.close()
+                
+                print(f"Saved feature map to {save_path}")    
+    def get_local_conditioning(self,proj_xray: Tensor , points_proj:Tensor , idx: int):
         #! keep points order 
         #b , c , h  , w  ,d = points_proj.shape
         #points_proj = rearrange(points_proj, 'b c h w d -> b c (h w d)') 
@@ -68,7 +128,16 @@ class ProjectionImplictConditionModel(ModelMixin):
         #pdb.set_trace()
         #proj_xray = proj_xray.reshape(b*m , c, w, h)
         proj_xray = rearrange(proj_xray , "b m c w h -> (b m) c w h")
-        xray_feats , global_features = self.image_encoder(proj_xray) # xray feats (b m) c w d   global_features (b m) c 1 1   m is n_view 
+        xray_feats , global_features = self.image_encoder(proj_xray) # xray feats (b m) c w d   global_features (b m) c 1 1   m is n_view
+        #pdb.set_trace()
+        if idx % self.save_freq == 0 or idx == 0 :
+            self.visualize_xray_features( xray_feats if isinstance(xray_feats, list) else [xray_feats],
+                                          save_dir= os.path.join(self.save_encoder_feat_path ,f"b_{idx}_feat_map_0"),
+                                          channel_ids=[0, 1, 2, 3, 4,5,6,7,8,9,10], batch_idx=0)  # 只保存前5个通道)
+            self.visualize_xray_features( xray_feats if isinstance(xray_feats, list) else [xray_feats],
+                                          save_dir= os.path.join(self.save_encoder_feat_path ,f"b_{idx}_feat_map_1"),
+                                          channel_ids=[0, 1, 2, 3, 4,5,6,7,8,9,10], batch_idx=1)  # 只保存前5个通道))   
+        
         #pdb.set_trace()
         #pdb.set_trace()
         global_features = global_features.squeeze(-1).squeeze(-1)
@@ -117,6 +186,58 @@ class ProjectionImplictConditionModel(ModelMixin):
         p_feats = torch.stack(p_list, dim=-1) # B, C, N, M
         return p_feats
 
+    def visualize_xray_features(self, xray_feats, save_dir, channel_ids=None, batch_idx=0):
+        """
+        可视化并保存指定通道的X光特征图
+        Args:
+            xray_feats: List of tensors [(B*M, C, H, W), ...]
+            save_dir: 特征图保存目录
+            channel_ids: 要保存的通道索引列表，如果为None则保存所有通道
+            batch_idx: 要可视化的batch中的索引，默认为0
+        """
+        import matplotlib.pyplot as plt
+        import os
+        import numpy as np
+        
+        def process_feature_map(feat_map):
+            # 归一化到[0,1]范围
+            feat_map = feat_map.detach().cpu().numpy()
+            feat_map = (feat_map - feat_map.min()) / (feat_map.max() - feat_map.min() + 1e-8)
+            return feat_map
+        # 创建保存目录
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 处理每个尺度的特征
+        for scale_idx, feat in enumerate(xray_feats):
+            B, C, H, W = feat.shape
+            #pdb.set_trace()
+            # 确定要处理的通道
+            if channel_ids is None:
+                channels_to_process = range(C)
+            else:
+                channels_to_process = channel_ids
+                
+            # 对每个选定的通道进行处理
+            for c in channels_to_process:
+                if c >= C:
+                    print(f"Warning: Channel {c} exceeds feature map channels {C}")
+                    continue
+                    
+                # 处理特征图
+                feature_map = process_feature_map(feat[batch_idx, c])       
+                # 创建图像
+                plt.figure(figsize=(8, 8))
+                plt.imshow(feature_map, cmap='gray')
+                plt.colorbar()
+                plt.title(f'Scale {scale_idx}, Channel {c}')
+                plt.axis('off')
+                
+                # 保存图像
+                save_path = os.path.join(save_dir, f'scale_{scale_idx}_channel_{c}.png')
+                plt.savefig(save_path)
+                plt.close()
+                print(f"Saved feature map to {save_path}")
+
 
     def get_input_with_conditioning(
         self,
@@ -124,6 +245,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         projs_xray: Optional[Tensor],    # b, 2 , u , v
         points_proj: Optional[Tensor],  # b, 2 , h , w , d 
         coords: Optional[Tensor],       # b, 3 , h , w , d
+        idx:int ,
     ):
         # 
         #B , C , H , W , D = x_t.shape
@@ -136,7 +258,7 @@ class ProjectionImplictConditionModel(ModelMixin):
         if self.use_coords:
             x_t_input.append(coords)
 
-        local_features , global_features = self.get_local_conditioning(projs_xray, points_proj)
+        local_features , global_features = self.get_local_conditioning(projs_xray, points_proj , idx)
 
         if self.use_local_conditioning:
             #pdb.set_trace()

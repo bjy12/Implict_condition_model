@@ -60,9 +60,9 @@ def get_optimizer(cfg: ProjectConfig, model: torch.nn.Module, accelerator: Accel
     elif cfg.optimizer.type == 'timm':
         from timm.optim import create_optimizer_v2
         optimizer = create_optimizer_v2(model_or_params=parameters, **cfg.optimizer.kwargs)
-    elif cfg.optimizer.type == 'transformers':
-        import transformers
-        Optimizer: torch.optim.Optimizer = getattr(transformers, cfg.optimizer.name)
+    # elif cfg.optimizer.type == 'transformers':
+    #     import transformers
+    #     Optimizer: torch.optim.Optimizer = getattr(transformers, cfg.optimizer.name)
         optimizer = Optimizer(parameters, **cfg.optimizer.kwargs)
     else:
         raise NotImplementedError(f'Invalid optimizer config: {cfg.optimizer}')
