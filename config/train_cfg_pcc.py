@@ -15,7 +15,7 @@ class CustomHydraRunDir(RunDir):
 @dataclass
 class RunConfig:
 
-    name: str = 'implict_diff'
+    name: str = 'train_unet'
     job: str = 'train'
     mixed_precision: str = 'no'
     cpu: bool = False
@@ -91,10 +91,10 @@ class PointCloudDiffusionModelConfig(PointCloudProjectionModelConfig):
     beta_start: float = 1e-5  # 0.00085
     beta_end: float = 8e-3  # 0.012
     beta_schedule: str = 'linear'  # 'custom'
+    model_type: str = 'unet'
 
     # Denoised model parameters (in a dict to match __init__)
     denoised_model_config: Dict = field(default_factory=lambda: {
-        'model_type': 'pcc',
         'layers': [1, 1, 1, 1],
         'norm_layer': 'GroupNorm',
         'embed_dims': [64, 128, 256, 512],
@@ -117,7 +117,18 @@ class PointCloudDiffusionModelConfig(PointCloudProjectionModelConfig):
         'out_channels': 1
     })
 
-
+    unet_config: Dict = field(default_factory=lambda:{
+        'embedding_type': 'positional',
+        'encoder_type': 'standard',
+        'decoder_type':'standard',
+        'channel_mult_noise': 1,
+        'resample_filter':[1,1],
+        'model_channels': 128, 
+        'channel_mult':[2,2,2],
+        'img_resolution':256,
+        'in_channels': 4, 
+        'out_channels': 1, # 1 + 3 
+    })
 @dataclass
 class DatasetConfig:
     type: str
@@ -138,8 +149,16 @@ class XrayPointsDataset(DatasetConfig):
 
 
 @dataclass
+class SliceDatasetConfig(DatasetConfig):
+    type: str = 'SliceDataset'
+    root: str = 'F:/Data_Space/Pelvic1K/slice_aixs_dataset'   
+    train_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_train_16.txt'
+    test_files_list: str = 'F:/Code_Space/Implict_condition_model/dataset/files_list/pelvic_coord_test_16.txt'
+
+
+@dataclass
 class DataloaderConfig:
-    batch_size: int = 4 
+    batch_size: int = 2 
     num_workers: int = 1 
         
 
@@ -147,7 +166,7 @@ class DataloaderConfig:
 class OptimizerConfig:
     type: str
     name: str
-    lr: float = 5e-4
+    lr: float = 1e-4
     weight_decay: float = 0.0
     scale_learning_rate_with_batch_size: bool = False
     gradient_accumulation_steps: int = 1
@@ -208,8 +227,8 @@ class CosineSchedulerConfig(SchedulerConfig):
     ))
 @dataclass
 class CheckpointConfig:
-    resume: Optional[str] = 'F:/Code_Space/Implict_condition_model/outputs/implict_diff/2024-12-21--19-21-01/checkpoint-step-80000/checkpoint.pth'
-    resume_training: bool = True
+    resume: Optional[str] = None
+    resume_training: bool = False
     resume_training_optimizer: bool = True
     resume_training_scheduler: bool = True
     resume_training_state: bool = True
@@ -234,7 +253,7 @@ class ProjectConfig:
         {'optimizer': 'adam'},
         {'scheduler': 'linear'},
         {'ema': 'default'},
-        {'dataset': 'XrayPoints'},
+        {'dataset': 'SlicDataset'},
         {'dataloader':'default'},
         {'checkpoint': 'default'},
     ])
@@ -248,6 +267,7 @@ cs.store(group='logging', name='default', node=LoggingConfig)
 cs.store(group='model', name='diffrec', node=PointCloudDiffusionModelConfig)
 cs.store(group='dataloader', name='default', node=DataloaderConfig)
 cs.store(group='dataset' ,  name='XrayPoints', node=XrayPointsDataset)
+cs.store(group='dataset' ,  name='SlicDataset', node=SliceDatasetConfig)
 cs.store(group='ema', name='default', node=ExponentialMovingAverageConfig)
 cs.store(group='checkpoint', name='default', node=CheckpointConfig)
 cs.store(group='optimizer', name='adadelta', node=AdadeltaOptimizerConfig)

@@ -32,7 +32,7 @@ def sample(
     loss_dict = {
 
     }
-
+    pdb.set_trace()
     # sample_way  
     for batch_idx , batch in enumerate(progress_bar):
         # only patch wise sample 

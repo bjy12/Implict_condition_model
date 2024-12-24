@@ -68,8 +68,22 @@ class ProjectionImplictConditionModel(ModelMixin):
         #pdb.set_trace()
         #proj_xray = proj_xray.reshape(b*m , c, w, h)
         proj_xray = rearrange(proj_xray , "b m c w h -> (b m) c w h")
+        self.visualize_xray_features( proj_xray if isinstance(proj_xray, list) else [proj_xray],
+                                    save_dir="proj_maps_0",
+                                    channel_ids=[0], batch_idx=0)  # 只保存前5个通道)
+        self.visualize_xray_features( proj_xray if isinstance(proj_xray, list) else [proj_xray],
+                                    save_dir="proj_maps_1",
+                                    channel_ids=[0], batch_idx=1)  # 只保存前5个通道)
+       
+        pdb.set_trace()
         xray_feats , global_features = self.image_encoder(proj_xray) # xray feats (b m) c w d   global_features (b m) c 1 1   m is n_view 
-        #pdb.set_trace()
+        pdb.set_trace()
+        self.visualize_xray_features( xray_feats if isinstance(xray_feats, list) else [xray_feats],
+                                      save_dir="feature_maps_0",
+                                      channel_ids=[0, 1, 2, 3, 4,5,6,7,8,9,10], batch_idx=0)  # 只保存前5个通道)
+        self.visualize_xray_features( xray_feats if isinstance(xray_feats, list) else [xray_feats],
+                                      save_dir="feature_maps_1",
+                                      channel_ids=[0, 1, 2, 3, 4,5,6,7,8,9,10], batch_idx=1)  # 只保存前5个通道))   
         #pdb.set_trace()
         global_features = global_features.squeeze(-1).squeeze(-1)
         global_features = rearrange(global_features , '(b m) c -> b (m c) ', b = b , m = m) # b m c 
@@ -97,7 +111,60 @@ class ProjectionImplictConditionModel(ModelMixin):
         return local_feats , global_features
 
 
-
+    def visualize_xray_features(self, xray_feats, save_dir, channel_ids=None, batch_idx=0):
+        """
+        可视化并保存指定通道的X光特征图
+        Args:
+            xray_feats: List of tensors [(B*M, C, H, W), ...]
+            save_dir: 特征图保存目录
+            channel_ids: 要保存的通道索引列表，如果为None则保存所有通道
+            batch_idx: 要可视化的batch中的索引，默认为0
+        """
+        import matplotlib.pyplot as plt
+        import os
+        import numpy as np
+        
+        def process_feature_map(feat_map):
+            # 归一化到[0,1]范围
+            feat_map = feat_map.detach().cpu().numpy()
+            feat_map = (feat_map - feat_map.min()) / (feat_map.max() - feat_map.min() + 1e-8)
+            return feat_map
+        
+        # 创建保存目录
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 处理每个尺度的特征
+        for scale_idx, feat in enumerate(xray_feats):
+            B, C, H, W = feat.shape
+            pdb.set_trace()
+            # 确定要处理的通道
+            if channel_ids is None:
+                channels_to_process = range(C)
+            else:
+                channels_to_process = channel_ids
+                
+            # 对每个选定的通道进行处理
+            for c in channels_to_process:
+                if c >= C:
+                    print(f"Warning: Channel {c} exceeds feature map channels {C}")
+                    continue
+                    
+                # 处理特征图
+                feature_map = process_feature_map(feat[batch_idx, c])
+                
+                # 创建图像
+                plt.figure(figsize=(8, 8))
+                plt.imshow(feature_map, cmap='gray')
+                plt.colorbar()
+                plt.title(f'Scale {scale_idx}, Channel {c}')
+                plt.axis('off')
+                
+                # 保存图像
+                save_path = os.path.join(save_dir, f'scale_{scale_idx}_channel_{c}.png')
+                plt.savefig(save_path)
+                plt.close()
+                
+                print(f"Saved feature map to {save_path}")
 
     def project_points(self, proj_feats ,points_proj):
         n_view = proj_feats[0].shape[1]
@@ -108,8 +175,9 @@ class ProjectionImplictConditionModel(ModelMixin):
             for proj_f in proj_feats:
                 feat = proj_f[:, i, ...] # B, C, W, H
                 p = points_proj[:, i, ...] # B, N, 2
-                # if torch.any(torch.abs(p) > 1):
-                #     print(f"Warning: coordinates out of range [-1,1]: {p.min():.3f} to {p.max():.3f}")
+                if torch.any(torch.abs(p) > 1):
+                    print(f"Warning: coordinates out of range [-1,1]: {p.min():.3f} to {p.max():.3f}")
+                #pdb.set_trace()
                 p_feats = index_2d(feat, p) # B, C, N
                 f_list.append(p_feats)
             p_feats = torch.cat(f_list, dim=1)
@@ -137,7 +205,7 @@ class ProjectionImplictConditionModel(ModelMixin):
             x_t_input.append(coords)
 
         local_features , global_features = self.get_local_conditioning(projs_xray, points_proj)
-
+        
         if self.use_local_conditioning:
             #pdb.set_trace()
             local_features = rearrange(local_features , 'b c (h w d) -> b h w d c', h=H, w=W, d=D) 

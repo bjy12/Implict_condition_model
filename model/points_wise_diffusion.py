@@ -25,7 +25,9 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         beta_end: float,
         beta_schedule: str,
         #pcc_net models
+        model_type: str = 'pcc',
         denoised_model_config: dict = {},
+        unet_config: dict = {},
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -44,7 +46,7 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         self.scheduler = self.schedulers_map['ddpm']  # this can be changed for inference
 
         #! denoise model  
-        self.noised_pred_model = DenoisedModel(**denoised_model_config)
+        self.noised_pred_model = DenoisedModel(model_type=model_type , pcc_config=denoised_model_config , unet_config=unet_config)
 
     def forward_train(self, 
                       coords_idensity: Optional[Tensor] ,  #  ( b , h ,  w ,  d , 3 + 1)  3 is x y z 1 is idensity
@@ -79,6 +81,9 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         if not noise_pred.shape == noise.shape:
             raise ValueError(f'{noise_pred.shape=} and {noise.shape=}')
         #pdb.set_trace()
+        print(" noised_pred : " , " min:", noise_pred.min() ,  'max', noise_pred.max() , "std", noise_pred.std())
+        print(" noise : " ,  'min:', noise.min() , 'max:', noise.max() , 'std' , noise.std())
+
         loss = F.mse_loss(noise_pred , noise)
 
         if return_intermediate_steps:
@@ -94,10 +99,20 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
         points_proj = batch['points_proj']    
         #pdb.set_trace()
         #points = rearrange(points , ' b n c -> b c n')
-        coords_idensity = torch.cat([points , idensity]  , dim=-1)
-
+        coords_idensity = torch.cat([points , idensity]  , dim=1)
+        coords_idensity = rearrange(coords_idensity , 'b c h w d  -> b h w d c')
         return coords_idensity , proj , points_proj
-    
+    def process_batch_sample(self, batch: dict):
+        angles = batch['angles']
+        proj = batch['projs']
+        points = batch['points']
+        idensity = batch['points_gt']
+        points_proj = batch['points_proj']    
+        pdb.set_trace()
+        #points = rearrange(points , ' b n c -> b c n')
+        coords_idensity = torch.cat([points , idensity]  , dim=-1)
+        #coords_idensity = rearrange(coords_idensity , 'b h w d c   -> b c h w d')
+        return coords_idensity , proj , points_proj    
     @torch.no_grad()
     def forward_sample(self, 
                        coords_idensity: Optional[Tensor] ,  #  ( b , h ,  w ,  d , 3 + 1)  3 is x y z 1 is idensity
@@ -110,7 +125,7 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
                        disable_tqdm: bool = False,
     ):  
         scheduler = self.scheduler if scheduler is None else self.schedulers_map[scheduler]
-
+        pdb.set_trace()
         device = self.device
         #pdb.set_trace()
         b , h , w , d , _ = coords_idensity.shape
@@ -157,11 +172,58 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
             sample_result = x_t.cpu().numpy()
             return sample_result , idensity
 
+    def u_net_batch_process(self, batch):
+        idensity =  batch['value']
+        coords = batch['coords']
+
+        coords_idensity = torch.cat([coords , idensity]  , dim=1)
+        #pdb.set_trace()
+        return coords_idensity
+
+    def forward_train_unet(self, coords_idensity , return_intermediate_steps: bool = False):
+        #pdb.set_trace()
+        B  =   coords_idensity.shape[0]
+        coords = coords_idensity[:,:3,:,:]
+        # x_0 is idensity  only add noise to idensity 
+        # because we want learn identisy ditribution 
+        x_0 = coords_idensity[:,3:,:,:] 
+        #pdb.set_trace()
+        # Sample random noise from idensity 
+        noise = torch.randn_like(x_0)
+        #pdb.set_trace()
+        # Sample random timesteps for each idensity
+        timestep = torch.randint(0, self.scheduler.num_train_timesteps, (B,), 
+            device=self.device, dtype=torch.long) 
+        
+        # Add noise to idensity 
+        x_t =  self.scheduler.add_noise(x_0, noise, timestep)
+        #pdb.set_trace()
+        # Forward predict nosie 
+        x_t_input = torch.cat([x_t , coords] , dim=1)
+        noise_pred = self.noised_pred_model(x_t_input, timestep)
+        # Check
+        #pdb.set_trace()
+        if not noise_pred.shape == noise.shape:
+            raise ValueError(f'{noise_pred.shape=} and {noise.shape=}')
+        #pdb.set_trace()
+        #print(" noised_pred : " , " min:", noise_pred.min() ,  'max', noise_pred.max() , "std", noise_pred.std())
+        #print(" noise : " ,  'min:', noise.min() , 'max:', noise.max() , 'std' , noise.std())
+
+        loss = F.mse_loss(noise_pred , noise)
+
+        if return_intermediate_steps:
+            return loss, (x_0, x_t, noise, noise_pred)
+        
+        return loss
+
 
     def forward(self, batch: dict , mode = 'train', **kwargs):
-        coords_idensity , proj , points_proj  = self.process_batch(batch)
         if mode == 'train':
+            coords_idensity , proj , points_proj  = self.process_batch(batch)
             return self.forward_train(coords_idensity , points_proj , proj)
+        elif mode == 'train_unet':
+            coords_idensity = self.u_net_batch_process(batch)
+            return self.forward_train_unet(coords_idensity)
         elif mode == 'sample':
             sample_params = {
                 'num_inference_steps': kwargs.get('num_inference_steps', 1000),
@@ -169,7 +231,8 @@ class Points_WiseImplict_ConditionDiffusionModel(ProjectionImplictConditionModel
                 'return_sample_every_n_steps': kwargs.get('return_sample_every_n_steps', 100),
                 'disable_tqdm': kwargs.get('disable_tqdm', False),
                 'scheduler': kwargs.get('scheduler', 'ddpm')
-            }            
+            }
+            coords_idensity , proj , points_proj  = self.process_batch_sample(batch)
             return self.forward_sample(coords_idensity , points_proj , proj  , **sample_params)
         # print("Feature stats:", {
         #     "coords_range": (coords_idensity.min(), coords_idensity.max()),

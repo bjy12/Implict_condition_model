@@ -94,7 +94,7 @@ def main(cfg: ProjectConfig):
     #Dataset
     #pdb.set_trace()
     dataloader_train , dataloader_test = get_dataset(cfg)
-    pdb.set_trace()
+    #pdb.set_trace()
     # Compute total training batch size
     total_batch_size = cfg.dataloader.batch_size * accelerator.num_processes * accelerator.gradient_accumulation_steps
     # Setup.
@@ -160,7 +160,7 @@ def main(cfg: ProjectConfig):
             with accelerator.accumulate(model):
                 #pdb.set_trace()
                 # Forward
-                loss = model(batch, mode='train')
+                loss = model(batch, mode='train_unet')
 
                 # Backward
                 accelerator.backward(loss)

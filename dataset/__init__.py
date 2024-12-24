@@ -1,8 +1,9 @@
 import torch
-from config.train_cfg_pcc import XrayPointsDataset ,  DataloaderConfig , ProjectConfig
+from config.train_cfg_pcc import XrayPointsDataset ,  DataloaderConfig , ProjectConfig ,SliceDatasetConfig
 from .dataset import XrayPointsCTDataset
 from .dataset_v1 import XrayPointsCTDatasetV2
-
+from .slice_dataset import SliceDataset
+import pdb
 PATH_DICT = {
             'image': 'images/{}.nii.gz',
             'projs': 'projections/{}.pickle',
@@ -14,16 +15,19 @@ PATH_DICT = {
 
 
 def get_dataset(cfg: ProjectConfig):
-    dataset_cfg : XrayPointsDataset = cfg.dataset
+    #dataset_cfg : XrayPointsDataset = cfg.dataset
+    dataset_cfg : SliceDatasetConfig = cfg.dataset
     dataloader_cfg : DataloaderConfig = cfg.dataloader
 
     # train_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'train' )
     # test_dataset = XrayPointsCTDataset(dataset_cfg , PATH_DICT , 'test')
 
           
-    
-    train_dataset = XrayPointsCTDatasetV2(dataset_cfg , PATH_DICT , 'train' )
-    test_dataset = XrayPointsCTDatasetV2(dataset_cfg , PATH_DICT , 'test')
+    train_dataset = SliceDataset(dataset_cfg , 'train')
+    test_dataset  = SliceDataset(dataset_cfg , 'test')
+    #pdb.set_trace()
+    #train_dataset = XrayPointsCTDatasetV2(dataset_cfg , PATH_DICT , 'train' )
+    #test_dataset = XrayPointsCTDatasetV2(dataset_cfg , PATH_DICT , 'test')
 
 
 

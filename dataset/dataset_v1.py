@@ -36,6 +36,7 @@ class XrayPointsCTDatasetV2(Dataset):
         with open(cfg.geo_config_path, 'r') as f:
             dst_cfg = yaml.safe_load(f)
             out_res = np.array(dst_cfg['dataset']['resolution'])
+            self.out_res = out_res 
             self.geo = Geometry(dst_cfg['projector'])
         self.geo_cfg = dst_cfg
         self.block_size = dst_cfg['dataset']['block_size'][0]
@@ -44,11 +45,19 @@ class XrayPointsCTDatasetV2(Dataset):
             path = os.path.join(self.data_root, self._path_dict[key])
             self._path_dict[key] = path
 
-    
         # prepare points
         if mode == 'train':
             # load blocks' coordinates [train only]
             self.blocks = np.load(self._path_dict['blocks_coords'])
+            block_path_list = []
+            for name in name_list:
+                #pdb.set_trace()
+                for num in range(self.blocks.shape[0]):
+                    #print( " num :" , num)
+                    block_path = os.path.join(self._path_dict['blocks_vals'].format(name, num))
+                    block_path_list.append(block_path)
+            random.shuffle(block_path_list)
+            self.block_path_list = block_path_list
         else:
             # prepare sampling points
             points = np.mgrid[:out_res[0], :out_res[1], :out_res[2]] # TODO: CT resolution
@@ -56,9 +65,10 @@ class XrayPointsCTDatasetV2(Dataset):
             points = points.reshape(3, -1)
             points = points.transpose(1, 0) # N, 3
             self.points = points / (out_res - 1)
-        
+            self.name_list = name_list
+        #pdb.set_trace()
         # other parameters
-        self.name_list = name_list
+        #self.name_list = name_list
         self.is_train = (mode == 'train')
         self.num_views = cfg.n_views
         #self.random_views = random_views
@@ -68,7 +78,10 @@ class XrayPointsCTDatasetV2(Dataset):
         self.points_proj = None
 
     def __len__(self):
-        return len(self.name_list)
+        if not self.is_train:
+            return len(self.name_list)
+        else:
+            return len(self.block_path_list)
     
     def sample_projections(self, name, n_view=None):
         # -- load projections
@@ -122,24 +135,74 @@ class XrayPointsCTDatasetV2(Dataset):
         for a in angles:
             p = self.geo.project(points, a)
             points_proj.append(p)
-        points_proj = np.stack(points_proj, axis=0) # [M, N, 2]
+        points_proj = np.stack(points_proj, axis=0).astype(np.float32) # [M, N, 2]
         return points_proj
+    
+    def patchify_3d(self, volume, coordinates , patch_size):
+        """
+        对3D体数据及其对应坐标进行patch切分
+        Args:
+            volume: shape [H, D, W] 的体数据
+            coordinates: shape [H, D, W, 3] 的坐标数据
+            patch_size: int, patch的大小
+        Returns:
+            volume_patch: 切分后的体数据patch
+            coord_patch: 切分后的坐标patch
+            (start_h, start_d, start_w): patch的起始位置
+        """
+        H, D, W = volume.shape
+        assert coordinates.shape[:3] == volume.shape, "Volume和coordinates的形状不匹配"
+        
+        # 计算可选择的最大起始位置
+        max_h = H - patch_size + 1
+        max_d = D - patch_size + 1
+        max_w = W - patch_size + 1
+        
+        # 随机选择起始位置
+        start_h = np.random.randint(0, max_h)
+        start_d = np.random.randint(0, max_d)
+        start_w = np.random.randint(0, max_w)
+        
+        # 切分patch
+        volume_patch = volume[
+            start_h:start_h + patch_size,
+            start_d:start_d + patch_size,
+            start_w:start_w + patch_size
+        ]
+        
+        coord_patch = coordinates[
+            start_h:start_h + patch_size,
+            start_d:start_d + patch_size,
+            start_w:start_w + patch_size,
+            :
+        ]
+        
+        return volume_patch, coord_patch
 
-    def __getitem__(self, index):
-        name = self.name_list[index]
-        pdb.set_trace()
+    def get_train_item(self, index):
+        block_path =  self.block_path_list[index]
+
+        base_name = os.path.basename(block_path).split('.')[0]
+        name = base_name.split('_')[0]
+        b_idx = int(base_name.split('-')[-1])
+
+        #pdb.set_trace()
         # -- load projections
         projs, angles = self.sample_projections(name)
 
         # -- load sampling points
         if not self.is_train:
-            points = self.points
-            points_gt = self.load_ct(name)
+            pos_all = self.points
+            pos_all = points.reshape(self.out_res , self.out_res ,self.out_res , 3)
+            value_ct = self.load_ct(name)
+            points_gt , points = self.patchify_3d(value_ct , pos_all , self.block_size)
+            pdb.set_trace()
+
         else:
             b_idx = np.random.randint(len(self.blocks))
             block_values = self.load_block(name, b_idx)
             block_coords = self.blocks[b_idx] # [N, 3]
-            pdb.set_trace()
+            #pdb.set_trace()
             points, points_gt = self.sample_points(block_coords, block_values)
             points_gt = points_gt[None, :]
 
@@ -153,13 +216,14 @@ class XrayPointsCTDatasetV2(Dataset):
         points = points.transpose(1,0)  # fisrt transpose   3 , N  and then reshape (3 , block_size , block_size , block_siez)  for keep order 
         points = points.reshape(3, self.block_size ,self.block_size ,self.block_size)
         points_gt = points_gt.reshape(1,self.block_size , self.block_size , self.block_size)
-        pdb.set_trace()
+        #pdb.set_trace()
 
         # -- collect data
         ret_dict = {
             # M: the number of views
             # N: the number of sampled points
-            'dst_name': self.dst_name,
+            #'dst_name': self.dst_name,
+            'b_idx': b_idx,
             'name': name,
             'angles': angles,           # [M,]
             'projs': projs,             # [M, 1, W, H], projections
@@ -168,3 +232,39 @@ class XrayPointsCTDatasetV2(Dataset):
             'points_proj': points_proj, # [M, N, 2]
         }
         return ret_dict
+    
+    def get_sample(self, index):
+        name = self.name_list[index]
+        #pdb.set_trace()
+        projs, angles = self.sample_projections(name)
+
+        coords = self.points
+        idensity = self.load_ct(name)
+        
+        coords   = coords.reshape(self.out_res[0] , self.out_res[1] , self.out_res[2] , 3 )
+        idensity = idensity.reshape(self.out_res[0] , self.out_res[1] ,self.out_res[2])
+        volume_patch , coord_patch  =  self.patchify_3d(idensity , coords , self.block_size )
+        volume_patch = volume_patch.astype(np.float32) / 255.
+        points_gt = volume_patch[...,None]
+        coord_patch  = coord_patch.reshape(-1,3)
+        points_proj =  self.project_points(coord_patch , angles)   
+        #pdb.set_trace()
+        points = coord_patch.reshape(self.block_size,self.block_size, self.block_size,3)
+        #pdb.set_trace()
+
+        ret_dict = {
+           'name': name,
+           'angles': angles,           # [M,]
+           'projs': projs,             # [M, 1, W, H], projections
+           'points': points, 
+           'points_gt':points_gt,
+           'points_proj': points_proj
+        }
+        return ret_dict
+
+    def __getitem__(self, index):
+        if not self.is_train:
+            return self.get_sample(index)
+        else:
+            return self.get_train_item(index)
+
